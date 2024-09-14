@@ -71,6 +71,7 @@ public class TurboConsumerSQSTest extends TestCase {
 
                 for (Message message: messageList) {
                     System.out.println(message.body());
+                    this.deleteMessage(queueUrl, message, sqsClient);
                 }
             }
             long end2 = System.nanoTime();
@@ -123,5 +124,19 @@ public class TurboConsumerSQSTest extends TestCase {
                 .messageAttributeNames(ALL_MESSAGE_ATTRIBUTES)
                 .build();
         return sqsClient.receiveMessage(receiveMessageRequest).messages();
+    }
+
+    /**
+     * Deletes a message from the specified queue.
+     *
+     * @param queueUrl The URL of the queue from which the message should be deleted.
+     * @param message  The message to be deleted.
+     */
+    public void deleteMessage(String queueUrl, Message message, SqsClient sqsClient) {
+        DeleteMessageRequest deleteMessageRequest = DeleteMessageRequest.builder()
+                .queueUrl(queueUrl)
+                .receiptHandle(message.receiptHandle())
+                .build();
+        sqsClient.deleteMessage(deleteMessageRequest);
     }
 }
