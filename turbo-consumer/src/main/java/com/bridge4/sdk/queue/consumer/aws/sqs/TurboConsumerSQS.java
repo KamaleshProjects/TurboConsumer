@@ -3,6 +3,7 @@ package com.bridge4.sdk.queue.consumer.aws.sqs;
 import com.bridge4.sdk.queue.consumer.api.TurboConsumer;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sqs.SqsClient;
+import software.amazon.awssdk.services.sqs.model.DeleteMessageRequest;
 import software.amazon.awssdk.services.sqs.model.Message;
 import software.amazon.awssdk.services.sqs.model.ReceiveMessageRequest;
 
@@ -83,6 +84,7 @@ public class TurboConsumerSQS implements TurboConsumer {
                 List<Message> messageList = receiveMessages(this.queueUrl);
                 for (Message message : messageList) {
                     this.heapMessageQueue.add(message.body());
+                    this.deleteMessage(this.queueUrl, message);
                 }
                 count += messageList.size();
             }
@@ -108,6 +110,20 @@ public class TurboConsumerSQS implements TurboConsumer {
                 .messageAttributeNames(ALL_MESSAGE_ATTRIBUTES)
                 .build();
         return sqsClient.receiveMessage(receiveMessageRequest).messages();
+    }
+
+    /**
+     * Deletes a message from the specified queue.
+     *
+     * @param queueUrl The URL of the queue from which the message should be deleted.
+     * @param message  The message to be deleted.
+     */
+    public void deleteMessage(String queueUrl, Message message) {
+        DeleteMessageRequest deleteMessageRequest = DeleteMessageRequest.builder()
+                .queueUrl(queueUrl)
+                .receiptHandle(message.receiptHandle())
+                .build();
+        sqsClient.deleteMessage(deleteMessageRequest);
     }
 
     @Override
