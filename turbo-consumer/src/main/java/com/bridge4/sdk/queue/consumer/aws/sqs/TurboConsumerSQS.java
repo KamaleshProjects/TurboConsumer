@@ -14,57 +14,87 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class TurboConsumerSQS<T> implements TurboConsumer<T> {
+/**
+ * <p> Provides API implementation for a messaging queue consumer with
+ * <a href="https://aws.amazon.com/sqs/">AWS SQS</a> as the queue provider </p>
+ * <p> This implementation attempts to provide a high throughput consumer implementation by buffering the messages
+ * in an internal queue </p>
+ * <p> The internal buffer is filled by a separate thread that is started by {@link #startConsumer()} that attempts to
+ * keep the queue filled to the {@link #MAX_INTERNAL_BUFFER_CAPACITY} </p>
+ */
+public class TurboConsumerSQS implements TurboConsumer<software.amazon.awssdk.services.sqs.model.Message> {
 
-    private final String queueUrl;
+    private final String queueUrl; // sqs queue url to communicate with the queue
+
+    // to indicate if the buffer is below capacity
     private final AtomicBoolean bufferBelowCapacity = new AtomicBoolean(true);
-    private final int MAX_INTERNAL_BUFFER_CAPACITY;
-    private final BlockingQueue<Message> heapMessageQueue;
+    private final int MAX_INTERNAL_BUFFER_CAPACITY; // capacity of the internal buffer
+    private final BlockingQueue<Message> heapMessageQueue; // internal queue to buffer the polled messages
+    private final SqsClient sqsClient; // sqs client to communicate with the sqs queue
 
-    public TurboConsumerSQS(String queueUrl, int maxBufferCapacity) {
+    /**
+     * @param queueUrl          sqs queue url to communicate with the queue
+     * @param maxBufferCapacity capacity of the internal buffer
+     * @param region            aws sqs queue region
+     */
+    public TurboConsumerSQS(String queueUrl, int maxBufferCapacity, Region region) {
         this.queueUrl = queueUrl;
         this.MAX_INTERNAL_BUFFER_CAPACITY = Math.max(INITIAL_CAPACITY, maxBufferCapacity);
         this.heapMessageQueue = new ArrayBlockingQueue<>(this.MAX_INTERNAL_BUFFER_CAPACITY);
+        sqsClient = SqsClient.builder().region(region).build();
     }
 
     private static final int INITIAL_CAPACITY = 10;
     private static final int RECEIVE_MESSAGE_WAIT_TIME_SECONDS = 0;
     public static final int MAX_NO_OF_MESSAGES = 10;
     private static final String ALL_MESSAGE_ATTRIBUTES = "All";
-    private static final SqsClient sqsClient = SqsClient.builder()
-            .region(Region.AP_SOUTH_1)
-            .build();
 
-    @SuppressWarnings("unchecked")
+    /**
+     * Polls a message from the internal buffer if available.
+     * <p>If the buffer size drops below capacity, it triggers a notification to fill the buffer.</p>
+     *
+     * @return An {@link Optional} containing a message if available, or an empty Optional if the buffer is empty.
+     */
     @Override
-    public Optional<T> poll() {
+    public Optional<Message> poll() {
         int currentCapacity = this.heapMessageQueue.size();
         if (currentCapacity == 0) return Optional.empty();
         Message message = this.heapMessageQueue.poll();
         if (currentCapacity < this.MAX_INTERNAL_BUFFER_CAPACITY) {
-            synchronized (this) { this.notify(); }
+            synchronized (this) {
+                this.notify();
+            }
         }
-        return Optional.of((T) message);
+        return Optional.of(message);
     }
 
-    @SuppressWarnings("unchecked")
+    /**
+     * Polls up to the specified maximum number of messages from the internal buffer.
+     *
+     * @param maxNoOfMessages Maximum number of messages to be polled from the buffer.
+     * @return A list of messages from the buffer, up to the specified maximum number.
+     * @throws RuntimeException if {@code maxNoOfMessages} is less than or equal to zero.
+     */
     @Override
-    public List<T> poll(int maxNoOfMessages) {
+    public List<Message> poll(int maxNoOfMessages) {
         if (maxNoOfMessages <= 0) throw new RuntimeException("maxNoOfMessages must be greater than 0");
 
         int currentCapacity = this.heapMessageQueue.size();
         if (currentCapacity == 0) return new ArrayList<>();
-        List<T> messageList = new ArrayList<>();
+        List<Message> messageList = new ArrayList<>();
         int count = 0;
         while (count < maxNoOfMessages) {
-            messageList.add((T) this.heapMessageQueue.poll());
+            messageList.add(this.heapMessageQueue.poll());
             count++;
         }
         return messageList;
     }
 
+    /**
+     * Continuously fills the internal buffer by polling messages from the SQS queue.
+     * <p>This method is designed to run indefinitely to keep the buffer filled.</p>
+     */
     @SuppressWarnings("InfiniteLoopStatement")
-    @Override
     public void eternalFillCapacity() {
         this.fillCapacity(true);
         while (true) {
@@ -72,9 +102,14 @@ public class TurboConsumerSQS<T> implements TurboConsumer<T> {
         }
     }
 
+    /**
+     * Fills the internal buffer with messages from the SQS queue, up to the buffer's capacity.
+     *
+     * @param isInitial Indicates whether this is the initial fill or a refill after the buffer is below capacity.
+     */
     public void fillCapacity(boolean isInitial) {
         try {
-            int fillCount = 0;
+            int fillCount;
             while (!this.bufferBelowCapacity.get() && !isInitial) {
                 synchronized (this) {
                     this.wait();
@@ -130,6 +165,9 @@ public class TurboConsumerSQS<T> implements TurboConsumer<T> {
         sqsClient.deleteMessage(deleteMessageRequest);
     }
 
+    /**
+     * Starts the consumer by launching a separate thread to continually fill the internal buffer.
+     */
     @Override
     public void startConsumer() {
         Thread fillBufferThread = new Thread(
