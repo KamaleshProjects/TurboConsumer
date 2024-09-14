@@ -3,13 +3,31 @@ package com.bridge4.sdk.queue.consumer.api;
 import java.util.List;
 import java.util.Optional;
 
-public interface TurboConsumer {
+/**
+ * Provides APIs for a messaging queue consumer
+ */
+public interface TurboConsumer<T> {
 
-    Optional<String> poll();
+    /**
+     *
+     * @return
+     */
+    Optional<T> poll();
 
-    List<String> poll(int maxNoOfMessages);
+    /**
+     *
+     * @param maxNoOfMessages
+     * @return
+     */
+    List<T> poll(int maxNoOfMessages);
 
+    /**
+     *
+     */
     void eternalFillCapacity();
 
+    /**
+     *
+     */
     void startConsumer();
 }

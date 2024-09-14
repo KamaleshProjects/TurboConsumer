@@ -14,12 +14,12 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class TurboConsumerSQS implements TurboConsumer {
+public class TurboConsumerSQS<T> implements TurboConsumer<T> {
 
     private final String queueUrl;
     private final AtomicBoolean bufferBelowCapacity = new AtomicBoolean(true);
     private final int MAX_INTERNAL_BUFFER_CAPACITY;
-    private final BlockingQueue<String> heapMessageQueue;
+    private final BlockingQueue<Message> heapMessageQueue;
 
     public TurboConsumerSQS(String queueUrl, int maxBufferCapacity) {
         this.queueUrl = queueUrl;
@@ -35,25 +35,29 @@ public class TurboConsumerSQS implements TurboConsumer {
             .region(Region.AP_SOUTH_1)
             .build();
 
+    @SuppressWarnings("unchecked")
     @Override
-    public Optional<String> poll() {
+    public Optional<T> poll() {
         int currentCapacity = this.heapMessageQueue.size();
         if (currentCapacity == 0) return Optional.empty();
-        String message = this.heapMessageQueue.poll();
+        Message message = this.heapMessageQueue.poll();
         if (currentCapacity < this.MAX_INTERNAL_BUFFER_CAPACITY) {
             synchronized (this) { this.notify(); }
         }
-        return Optional.of(message);
+        return Optional.of((T) message);
     }
 
+    @SuppressWarnings("unchecked")
     @Override
-    public List<String> poll(int maxNoOfMessages) {
+    public List<T> poll(int maxNoOfMessages) {
+        if (maxNoOfMessages <= 0) throw new RuntimeException("maxNoOfMessages must be greater than 0");
+
         int currentCapacity = this.heapMessageQueue.size();
         if (currentCapacity == 0) return new ArrayList<>();
-        List<String> messageList = new ArrayList<>();
+        List<T> messageList = new ArrayList<>();
         int count = 0;
         while (count < maxNoOfMessages) {
-            messageList.add(this.heapMessageQueue.poll());
+            messageList.add((T) this.heapMessageQueue.poll());
             count++;
         }
         return messageList;
@@ -83,7 +87,7 @@ public class TurboConsumerSQS implements TurboConsumer {
             while (count < fillCount && count < heapMessageQueueSize - MAX_NO_OF_MESSAGES) {
                 List<Message> messageList = receiveMessages(this.queueUrl);
                 for (Message message : messageList) {
-                    this.heapMessageQueue.add(message.body());
+                    this.heapMessageQueue.add(message);
                     this.deleteMessage(this.queueUrl, message);
                 }
                 count += messageList.size();

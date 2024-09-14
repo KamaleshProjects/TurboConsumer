@@ -39,18 +39,18 @@ public class TurboConsumerSQSTest extends TestCase {
                 sqsClient.sendMessage(sendMsgRequest);
             }
 
-            TurboConsumer turboConsumer = new TurboConsumerSQS(queueUrl, 100);
+            TurboConsumer<Message> turboConsumer = new TurboConsumerSQS<>(queueUrl, 100);
             turboConsumer.startConsumer();
 
             Thread.sleep(1000);
 
             long start1 = System.nanoTime();
             while (true) {
-                List<String> messageList = turboConsumer.poll(100);
+                List<Message> messageList = turboConsumer.poll(100);
                 if (messageList.isEmpty()) break;
 
-                for (String message: messageList) {
-                    System.out.println(message);
+                for (Message message: messageList) {
+                    System.out.println(message.body());
                 }
             }
             long end1 = System.nanoTime();
