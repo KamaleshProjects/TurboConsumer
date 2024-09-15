@@ -1,6 +1,6 @@
 # TurboConsumer - High Throughput Messaging Queue Consumer
 
-TurboConsumer provides a high-performance messaging queue consumer interface, designed to mitigate the performance impacts of I/O operations such as polling and message deletion. This project includes a concrete implementation for AWS SQS and demonstrates how to efficiently handle message consumption, specifically, maximises CPU usage (and increases throughput, without jitters caused by waiting for I/O) where the task processing is I/O bound by the network calls for polling the queue.
+TurboConsumer provides a high-performance messaging queue consumer interface, designed to mitigate the performance impacts of I/O operations such as polling and message deletion. This project includes a concrete implementation for AWS SQS and demonstrates how to efficiently handle message consumption, by maximising CPU usage (and increasing throughput, without jitters caused by waiting for I/O) by buffering the messages in an in memory queue. Specifically useful where the task processing is I/O bound by the network calls for polling the queue.
 
 ## Key Features
 
