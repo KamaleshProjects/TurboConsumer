@@ -8,6 +8,13 @@ TurboConsumer provides a high-performance messaging queue consumer interface, de
 - **Flexible API**: The `TurboConsumer` interface is adaptable to various message queue providers.
 - **AWS SQS Integration**: A specific implementation for AWS SQS is provided to handle high-throughput scenarios.
 
+## Performance
+
+![TurboConsumerPerformanceTest.png](TurboConsumerPerformanceTest.png)
+
+Graph representing the time taken to consume n no of messages.
+Details of the performance test implementation can be found in the turbo-consumer/src/test folder.
+
 ## Table of Contents
 
 - [Installation](#installation)
