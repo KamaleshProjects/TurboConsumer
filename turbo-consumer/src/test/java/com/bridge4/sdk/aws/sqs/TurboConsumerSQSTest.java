@@ -5,10 +5,22 @@ import com.bridge4.sdk.queue.consumer.aws.sqs.TurboConsumerSQS;
 import junit.framework.Test;
 import junit.framework.TestCase;
 import junit.framework.TestSuite;
+import org.jfree.chart.ChartFactory;
+import org.jfree.chart.ChartPanel;
+import org.jfree.chart.ChartUtils;
+import org.jfree.chart.JFreeChart;
+import org.jfree.chart.axis.LogarithmicAxis;
+import org.jfree.chart.plot.PlotOrientation;
+import org.jfree.chart.plot.XYPlot;
+import org.jfree.data.xy.XYSeries;
+import org.jfree.data.xy.XYSeriesCollection;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.*;
 
+import javax.swing.*;
+import java.io.File;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -157,5 +169,97 @@ public class TurboConsumerSQSTest extends TestCase {
                 .receiptHandle(message.receiptHandle())
                 .build();
         sqsClient.deleteMessage(deleteMessageRequest);
+    }
+
+    public void disabledTestPerformanceGraph() throws InterruptedException, IOException {
+        SqsClient sqsClient = SqsClient.builder().region(Region.AP_SOUTH_1).build();
+        String queueUrl = createQueueIfNotExists("qa_turbo_consumer_q", sqsClient);
+
+        int[] messageCounts = {10, 100, 1000, 10000};
+        XYSeries turboConsumerSeries = new XYSeries("TurboConsumer");
+        XYSeries normalConsumerSeries = new XYSeries("Normal Consumer");
+
+        // Test with varying message counts
+        for (int messageCount : messageCounts) {
+            // Add messages to the queue
+            sendMessages(queueUrl, sqsClient, messageCount);
+
+            // TurboConsumer performance
+            TurboConsumer<Message> turboConsumer = new TurboConsumerSQS(queueUrl, 100, Region.AP_SOUTH_1);
+            turboConsumer.startConsumer();
+            long turboStartTime = System.nanoTime();
+            consumeMessagesWithTurbo(turboConsumer, messageCount);
+            long turboEndTime = System.nanoTime();
+            turboConsumerSeries.add(messageCount, (turboEndTime - turboStartTime));
+
+            // Add messages to the queue
+            sendMessages(queueUrl, sqsClient, messageCount);
+            // Normal consumption performance
+            long normalStartTime = System.nanoTime();
+            consumeMessagesNormally(queueUrl, sqsClient, messageCount);
+            long normalEndTime = System.nanoTime();
+            normalConsumerSeries.add(messageCount, (normalEndTime - normalStartTime));
+        }
+
+        // Plotting the graph
+        XYSeriesCollection dataset = new XYSeriesCollection();
+        dataset.addSeries(turboConsumerSeries);
+        dataset.addSeries(normalConsumerSeries);
+
+        JFreeChart chart = ChartFactory.createXYLineChart(
+                "TurboConsumer vs Normal Consumer Performance",
+                "Number of Messages",
+                "Time Taken (nanoseconds, logarithmic scale)",
+                dataset,
+                PlotOrientation.VERTICAL,
+                true,
+                true,
+                false
+        );
+
+        // Set Y-axis to logarithmic scale for better visibility
+        XYPlot plot = chart.getXYPlot();
+        plot.setRangeAxis(new LogarithmicAxis("Time Taken (nanoseconds, logarithmic scale)"));
+
+        // Display the chart
+        JFrame chartFrame = new JFrame();
+        ChartPanel chartPanel = new ChartPanel(chart);
+        chartPanel.setPreferredSize(new java.awt.Dimension(800, 600));
+        chartFrame.setContentPane(chartPanel);
+        chartFrame.pack();
+        chartFrame.setVisible(true);
+
+        File chartFile = new File("/Users/kamaleshs/Documents/personal/TurboConsumerPerformanceTest.png");
+        ChartUtils.saveChartAsPNG(chartFile, chart, 800, 600);
+
+    }
+
+    public void sendMessages(String queueUrl, SqsClient sqsClient, int count) {
+        for (int i = 0; i < count; i++) {
+            SendMessageRequest sendMsgRequest = SendMessageRequest.builder()
+                    .queueUrl(queueUrl)
+                    .messageBody("Message " + i)
+                    .messageAttributes(new HashMap<>())
+                    .build();
+            sqsClient.sendMessage(sendMsgRequest);
+        }
+    }
+
+    public void consumeMessagesWithTurbo(TurboConsumer<Message> turboConsumer, int messageCount) throws InterruptedException {
+        List<Message> messages;
+        do {
+            messages = turboConsumer.poll(messageCount);
+        } while (!messages.isEmpty());
+    }
+
+    public void consumeMessagesNormally(String queueUrl, SqsClient sqsClient, int messageCount) {
+        int received = 0;
+        while (received < messageCount) {
+            List<Message> messages = receiveMessages(queueUrl, sqsClient);
+            received += messages.size();
+            for (Message message : messages) {
+                deleteMessage(queueUrl, message, sqsClient);
+            }
+        }
     }
 }
